@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import logic as logic
+from app import logic
 
 
 app = FastAPI(debug=os.environ.get("MODE", "DEBUG") == "DEBUG")
