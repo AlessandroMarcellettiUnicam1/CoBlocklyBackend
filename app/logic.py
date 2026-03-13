@@ -28,7 +28,6 @@ class Mapping(BaseModel):
     I: str
     E: str
 
-
 '''
 def loadLog(log: bytes):
     global data
@@ -36,10 +35,16 @@ def loadLog(log: bytes):
     return len(data)
 '''
 
-
 def uploadLog(file: str):
     global log, events, columns
     print(f"file = {file}")
+    print("COLONNE TROVATE NEL LOG:", columns)
+
+    # reset variabili globali
+    log = {}
+    events = 0
+    columns = []
+
     try:
         data = pm4py.read_xes(file)
         events = len(data)
