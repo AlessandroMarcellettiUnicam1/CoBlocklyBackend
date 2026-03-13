@@ -48,17 +48,22 @@ def uploadLog(file: str):
     try:
         data = pm4py.read_xes(file)
         events = len(data)
-        # print(data.columns)
         columns = data.columns.tolist()
+
         grouped = {}
+
         if "CryptoKitties" in file:
             grouped = data.groupby('case:ident:piid').apply(lambda x: x.to_dict(orient='records')).to_dict()
+        elif 'case:case_id' in columns:
+            grouped = data.groupby('case:case_id').apply(lambda x: x.to_dict(orient='records')).to_dict()
         else:
             grouped = data.groupby('case:concept:name').apply(lambda x: x.to_dict(orient='records')).to_dict()
+
         # Build data structure for the event log { 'case_id': [{event1},{event2},{event...},{eventN}]}
         log = {str(key): value for key, value in grouped.items()}
         
         print(f"log cases: {len(log)}")
+
         '''
         # Iterate through traces (cases)
         for case_id, this_case in log.items():
@@ -68,6 +73,7 @@ def uploadLog(file: str):
             for index_event, this_event in enumerate(this_case):
                 print(this_event)
                 '''
+        
     except  Exception as e: 
         print(e)
         return False
@@ -401,14 +407,14 @@ def check_flat_field(field_name, condition, event, mapping):
 
     # Map the field name to the event value
     actual_val = None
-    if field_name == "function": actual_val = event[mapping.function]
-    elif field_name == "contract": actual_val = event[mapping.contract]
-    elif field_name == "block":  actual_val = event[mapping.block]
-    elif field_name == "sender": actual_val = event[mapping.sender]
-    elif field_name == "timestamp": actual_val = event[mapping.timestamp]
-    elif field_name == "gasLimit": actual_val = event[mapping.gasLimit]
-    elif field_name == "gasUsed": actual_val = event[mapping.gasUsed]
-    elif field_name == "value": actual_val = event[mapping.value]
+    if field_name == "function": actual_val = event.get(mapping.function)
+    elif field_name == "contract": actual_val = event.get(mapping.contract)
+    elif field_name == "block":  actual_val = event.get(mapping.block)
+    elif field_name == "sender": actual_val = event.get(mapping.sender)
+    elif field_name == "timestamp": actual_val = event.get(mapping.timestamp)
+    elif field_name == "gasLimit": actual_val = event.get(mapping.gasLimit)
+    elif field_name == "gasUsed": actual_val = event.get(mapping.gasUsed)
+    elif field_name == "value": actual_val = event.get(mapping.value)
     
     ret = compare(actual_val, condition.get("op"), target_val)
     return ret
