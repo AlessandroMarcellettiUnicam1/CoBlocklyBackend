@@ -46,6 +46,12 @@ def uploadLog(file: str):
     columns = []
 
     try:
+
+        if file.lower().endswith('.csv'):
+            data = pd.read_csv(file) 
+        elif file.lower().endswith('.xes'):
+            data = pm4py.read_xes(file)
+        
         data = pm4py.read_xes(file)
         events = len(data)
         columns = data.columns.tolist()
