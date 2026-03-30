@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app import logic
+from app import jsonConverter
 
 
 app = FastAPI(debug=os.environ.get("MODE", "DEBUG") == "DEBUG")
@@ -24,6 +25,13 @@ app.add_middleware(
 
 class Rule(BaseModel):
     rule: str
+
+class conversionParameters(BaseModel):
+    input_path: str
+    case_col: str
+    activity_col: str
+    time_col: str
+    xes_name: str
 
 class Mapping(BaseModel):
     function: str
@@ -67,6 +75,31 @@ async def verifyRule(rule: Rule, mapping: Mapping):
     #print(type(res))
     #print(res)
     return JSONResponse(content=res)
+
+@app.post("/api/convertToXes")
+async def convertJson(conversionParamenters: conversionParameters):
+    
+    dataset = jsonConverter.load_dataset(conversionParamenters.input_path)
+    xesContent = jsonConverter.build_log_content(
+        dataset,
+        conversionParamenters.case_col,
+        conversionParamenters.activity_col,
+        conversionParamenters.time_col)
+    xesLogString = jsonConverter.generate_xes(xesContent, conversionParamenters.xes_name)
+
+    try:
+        # TODO cambiare con posizione corretta
+        output_path = f"uploads/{conversionParamenters.xes_name}.xes"
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(xesLogString)
+        
+        return True
+    except Exception:
+        print(Exception)
+        return False
+
+    return False
 
 if not app.debug:
     static_files_folder = os.path.join(os.path.dirname(__file__), 'static')
