@@ -96,7 +96,7 @@ async def convertJson(conversionParamenters: conversionParameters):
         # with open(output_path, "w", encoding="utf-8") as f:
         #     f.write(xesLogString)
 
-        return { "sucess": True, "xes_string": xesLogString }
+        return { "success": True, "xes_string": xesLogString }
     
     except Exception as e:
         print(f"Errore durante la conversione in XES: {e}")
