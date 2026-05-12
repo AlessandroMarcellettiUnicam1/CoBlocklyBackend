@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from typing import List, Dict, Any
 
 from app import logic
 from app import jsonConverter
@@ -27,7 +28,8 @@ class Rule(BaseModel):
     rule: str
 
 class conversionParameters(BaseModel):
-    input_path: str
+    # input_path: str
+    data: List[Dict[str, Any]]
     case_col: str
     activity_col: str
     time_col: str
@@ -79,27 +81,27 @@ async def verifyRule(rule: Rule, mapping: Mapping):
 @app.post("/api/convertToXes")
 async def convertJson(conversionParamenters: conversionParameters):
     
-    dataset = jsonConverter.load_dataset(conversionParamenters.input_path)
-    xesContent = jsonConverter.build_log_content(
-        dataset,
-        conversionParamenters.case_col,
-        conversionParamenters.activity_col,
-        conversionParamenters.time_col)
-    xesLogString = jsonConverter.generate_xes(xesContent, conversionParamenters.xes_name)
-
     try:
-        # TODO cambiare con posizione corretta
-        output_path = f"uploads/{conversionParamenters.xes_name}.xes"
+        dataset = jsonConverter.load_dataset(conversionParamenters.data)
 
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(xesLogString)
+        xesContent = jsonConverter.build_log_content(
+            dataset,
+            conversionParamenters.case_col,
+            conversionParamenters.activity_col,
+            conversionParamenters.time_col)
         
-        return True
-    except Exception:
-        print(Exception)
-        return False
+        xesLogString = jsonConverter.generate_xes(xesContent, conversionParamenters.xes_name)
 
-    return False
+        # output_path = f"uploads/{conversionParamenters.xes_name}.xes"
+        # with open(output_path, "w", encoding="utf-8") as f:
+        #     f.write(xesLogString)
+
+        return { "sucess": True, "xes_string": xesLogString }
+    
+    except Exception as e:
+        print(f"Errore durante la conversione in XES: {e}")
+        return {"success": False, "error": str(e)}
+
 
 if not app.debug:
     static_files_folder = os.path.join(os.path.dirname(__file__), 'static')
