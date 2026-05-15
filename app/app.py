@@ -1,11 +1,14 @@
 import requests
 import os
+import pm4py
+import tempfile
 from fastapi import FastAPI, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Dict, Any
+
 
 from app import logic
 from app import jsonConverter
@@ -34,6 +37,7 @@ class conversionParameters(BaseModel):
     activity_col: str
     time_col: str
     xes_name: str
+    extract_columns: bool = False
 
 class Mapping(BaseModel):
     function: str
@@ -92,11 +96,28 @@ async def convertJson(conversionParamenters: conversionParameters):
         
         xesLogString = jsonConverter.generate_xes(xesContent, conversionParamenters.xes_name)
 
+        if conversionParamenters.extract_columns:
+            # creazione file temporaneo per leggere le colonne direttamente
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xes", mode="w", encoding="utf-8") as temp_file:
+                temp_file.write(xesLogString)
+                temp_file_path = temp_file.name
+            
+            try:
+                data = pm4py.read_xes(temp_file_path)
+                columns_list = data.columns.tolist()
+            finally:
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+
         # output_path = f"uploads/{conversionParamenters.xes_name}.xes"
         # with open(output_path, "w", encoding="utf-8") as f:
         #     f.write(xesLogString)
 
-        return { "success": True, "xes_string": xesLogString }
+        return { 
+            "success": True, 
+            "xes_string": xesLogString,
+            "columns": columns_list 
+        }
     
     except Exception as e:
         print(f"Errore durante la conversione in XES: {e}")
