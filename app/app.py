@@ -96,6 +96,7 @@ async def convertJson(conversionParamenters: conversionParameters):
         
         xesLogString = jsonConverter.generate_xes(xesContent, conversionParamenters.xes_name)
 
+        columns_list = []
         if conversionParamenters.extract_columns:
             # creazione file temporaneo per leggere le colonne direttamente
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xes", mode="w", encoding="utf-8") as temp_file:
