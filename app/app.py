@@ -8,10 +8,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Dict, Any
-
-
 from app import logic
 from app import jsonConverter
+import liveLogic
 
 
 app = FastAPI(debug=os.environ.get("MODE", "DEBUG") == "DEBUG")
@@ -53,6 +52,11 @@ class Mapping(BaseModel):
     I: str
     E: str
 
+class LiveVerificationRequest(BaseModel):
+    xes_string: str
+    rule: str
+    mapping: Mapping
+
 @app.post("/api/uploadLog")
 async def uploadFile(file: UploadFile = File(...)):
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
@@ -81,6 +85,21 @@ async def verifyRule(rule: Rule, mapping: Mapping):
     #print(type(res))
     #print(res)
     return JSONResponse(content=res)
+
+@app.post("/api/verifyRuleLive")
+async def verifyRuleLive(request: LiveVerificationRequest):
+    try:
+        res = liveLogic.verifyRuleLive(
+            request.xes_string, 
+            request.rule, 
+            request.mapping
+        )
+        return JSONResponse(content=res)
+        
+    except Exception as e:
+        print(f"Errore critico durante verifyRuleLive: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+    
 
 @app.post("/api/convertToXes")
 async def convertJson(conversionParamenters: conversionParameters):
