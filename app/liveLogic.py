@@ -50,6 +50,7 @@ def verifyRuleLive(xes_string: str, rule: str, mapping):
     safe_data = jsonable_encoder({"compliant": c, "noncompliant": nc})
     return safe_data
 
+# funzioni che non prendono il log globale
 def applyBinaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
     compliant = []
     noncompliant = []
