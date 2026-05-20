@@ -4,6 +4,8 @@ from io import BytesIO
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from app.logic import check_full_constraint
+import tempfile
+import os
 
 
 class Mapping(BaseModel):
@@ -21,34 +23,41 @@ class Mapping(BaseModel):
     E: str
 
 def verifyRuleLive(xes_string: str, rule: str, mapping):
+
+    # creo un file temporaneo per leggere lo xes
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.xes', delete=False) as tmp:
+        tmp.write(xes_string)
+        tmp_path = tmp.name
     
-    # creazione del file virtuale per farlo leggere a pm4py
-    virtual_file = BytesIO(xes_string.encode('utf-8'))
-    data = pm4py.read_xes(virtual_file)
+    data = pm4py.read_xes(tmp)
     columns = data.columns.tolist()
 
-    # raggruppamento degli eventi
-    if "CryptoKitties" in xes_string:
-        grouped = data.groupby('case:ident:piid').apply(lambda x: x.to_dict(orient='records')).to_dict()
-    elif 'case:case_id' in columns:
-        grouped = data.groupby('case:case_id').apply(lambda x: x.to_dict(orient='records')).to_dict()
-    else:
-        grouped = data.groupby('case:concept:name').apply(lambda x: x.to_dict(orient='records')).to_dict()
+    try:
+        # raggruppamento degli eventi
+        if "CryptoKitties" in xes_string:
+            grouped = data.groupby('case:ident:piid').apply(lambda x: x.to_dict(orient='records')).to_dict()
+        elif 'case:case_id' in columns:
+            grouped = data.groupby('case:case_id').apply(lambda x: x.to_dict(orient='records')).to_dict()
+        else:
+            grouped = data.groupby('case:concept:name').apply(lambda x: x.to_dict(orient='records')).to_dict()
 
-    local_log_dict = {str(key): value for key, value in grouped.items()}
+        local_log_dict = {str(key): value for key, value in grouped.items()}
 
-    # parsing regola
-    parsed: dict = json.loads(rule)
-    c, nc = [], []
-    
-    # verifica della regola
-    if (parsed.get("cf0", {}).get("cfb") is None):
-        c, nc = applyUnaryRuleLive(parsed, mapping, local_log_dict)
-    else:
-        c, nc = applyBinaryRuleLive(parsed, mapping, local_log_dict)
+        # parsing regola
+        parsed: dict = json.loads(rule)
+        c, nc = [], []
         
-    safe_data = jsonable_encoder({"compliant": c, "noncompliant": nc})
-    return safe_data
+        # verifica della regola
+        if (parsed.get("cf0", {}).get("cfb") is None):
+            c, nc = applyUnaryRuleLive(parsed, mapping, local_log_dict)
+        else:
+            c, nc = applyBinaryRuleLive(parsed, mapping, local_log_dict)
+            
+        safe_data = jsonable_encoder({"compliant": c, "noncompliant": nc})
+        return safe_data
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 # funzioni che non prendono il log globale
 def applyBinaryRuleLive(parsed: dict, mapping, local_log_dict: dict):

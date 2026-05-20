@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 from app import logic
 from app import jsonConverter
-import liveLogic
+from app import liveLogic
 
 
 app = FastAPI(debug=os.environ.get("MODE", "DEBUG") == "DEBUG")
