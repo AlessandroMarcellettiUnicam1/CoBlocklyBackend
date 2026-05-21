@@ -29,7 +29,7 @@ def verifyRuleLive(xes_string: str, rule: str, mapping):
         tmp.write(xes_string)
         tmp_path = tmp.name
     
-    data = pm4py.read_xes(tmp)
+    data = pm4py.read_xes(tmp_path)
     columns = data.columns.tolist()
 
     try:
