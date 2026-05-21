@@ -105,6 +105,22 @@ async def verifyRuleLive(request: LiveVerificationRequest):
 async def convertJson(conversionParamenters: conversionParameters):
     
     try:
+        # se il payload è vuoto, ritorno uno xes senza tracce
+        if not conversionParamenters.data or len(conversionParamenters.data) == 0:
+            empty_xes_lines = [
+                '<log xes.version="1.0" xes.features="nested-attributes">',
+                f'<string key="concept:name" value="{conversionParamenters.xes_name}"/>',
+                '</log>'
+            ]
+            empty_xes_string = "\n".join(empty_xes_lines)
+            
+            return { 
+                "success": True, 
+                "xes_string": empty_xes_string,
+                "columns": []
+            }
+        
+
         dataset = jsonConverter.load_dataset(conversionParamenters.data)
 
         xesContent = jsonConverter.build_log_content(
