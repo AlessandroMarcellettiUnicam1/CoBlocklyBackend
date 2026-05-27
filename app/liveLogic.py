@@ -45,15 +45,15 @@ def verifyRuleLive(xes_string: str, rule: str, mapping):
 
         # parsing regola
         parsed: dict = json.loads(rule)
-        c, nc = [], []
+        c, nc, ign = [], [], []
         
         # verifica della regola
         if (parsed.get("cf0", {}).get("cfb") is None):
-            c, nc = applyUnaryRuleLive(parsed, mapping, local_log_dict)
+            c, nc, ign = applyUnaryRuleLive(parsed, mapping, local_log_dict)
         else:
-            c, nc = applyBinaryRuleLive(parsed, mapping, local_log_dict)
+            c, nc, ign = applyBinaryRuleLive(parsed, mapping, local_log_dict)
             
-        safe_data = jsonable_encoder({"compliant": c, "noncompliant": nc})
+        safe_data = jsonable_encoder({"compliant": c, "noncompliant": nc, "ignored": ign})
         return safe_data
     finally:
         if os.path.exists(tmp_path):
@@ -63,6 +63,7 @@ def verifyRuleLive(xes_string: str, rule: str, mapping):
 def applyBinaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
     compliant = []
     noncompliant = []
+    ignored = []
 
     tx_rules = []
     cf_rules = []
@@ -109,7 +110,8 @@ def applyBinaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
                      if idx_B > idx_A:
                          is_case_compliant = False
 
-        if all(x is None for x in found_indices): pass
+        if all(x is None for x in found_indices): 
+            ignored.append(this_case)
         elif is_case_compliant: compliant.append(this_case) 
         else: noncompliant.append(this_case)
 
@@ -119,6 +121,7 @@ def applyBinaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
 def applyUnaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
     compliant = []
     noncompliant = []
+    ignored = []
     
     tx_rule = parsed["tx0"]["constraint"]
     mode = parsed["cf0"]["cfu"][0] 
@@ -146,5 +149,5 @@ def applyUnaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
             if found_tx: noncompliant.append(this_case)
             else: compliant.append(this_case)
 
-    return compliant, noncompliant
+    return compliant, noncompliant, ignored
 
