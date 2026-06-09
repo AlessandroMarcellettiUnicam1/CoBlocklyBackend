@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.logic import check_full_constraint
 import tempfile
 import os
+import pandas as pd
 
 
 class Mapping(BaseModel):
@@ -30,6 +31,9 @@ def verifyRuleLive(xes_string: str, rule: str, mapping):
         tmp_path = tmp.name
     
     data = pm4py.read_xes(tmp_path)
+
+    data = data.where(pd.notna(data), None) # sostituisco NaN con None per rendere compatibili i JSON
+
     columns = data.columns.tolist()
 
     try:
