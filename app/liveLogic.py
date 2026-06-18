@@ -7,6 +7,7 @@ from app.logic import check_full_constraint
 import tempfile
 import os
 import pandas as pd
+import numpy as np
 
 
 class Mapping(BaseModel):
@@ -23,7 +24,7 @@ class Mapping(BaseModel):
     I: str
     E: str
 
-def verifyRuleLive(xes_string: str, rule: str, mapping):
+def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping):
 
     # creo un file temporaneo per leggere lo xes
     with tempfile.NamedTemporaryFile(mode='w', suffix='.xes', delete=False) as tmp:
@@ -32,7 +33,7 @@ def verifyRuleLive(xes_string: str, rule: str, mapping):
     
     data = pm4py.read_xes(tmp_path)
 
-    data = data.where(pd.notna(data), None) # sostituisco NaN con None per rendere compatibili i JSON
+    data = data.replace({np.nan: None})# sostituisco NaN con None per rendere compatibili i JSON
 
     columns = data.columns.tolist()
 
