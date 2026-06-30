@@ -24,6 +24,7 @@ class Mapping(BaseModel):
     I: str
     E: str
 
+# TODO: aggiungere logica per il temporarily compliant e non compliant
 def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping):
 
     # creo un file temporaneo per leggere lo xes
@@ -50,7 +51,7 @@ def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping):
 
         # parsing regola
         parsed: dict = json.loads(rule)
-        c, nc, ign = [], [], []
+        c, nc, ign, tc, tnc = [], [], [], [], []
         
         # verifica della regola
         if (parsed.get("cf0", {}).get("cfb") is None):
@@ -58,7 +59,7 @@ def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping):
         else:
             c, nc, ign = applyBinaryRuleLive(parsed, mapping, local_log_dict)
             
-        safe_data = jsonable_encoder({"compliant": c, "noncompliant": nc, "ignored": ign})
+        safe_data = jsonable_encoder({"compliant": c, "noncompliant": nc, "ignored": ign, "tempCompliant": tc, "tempNonCompliant": tnc})
         return safe_data
     finally:
         if os.path.exists(tmp_path):
