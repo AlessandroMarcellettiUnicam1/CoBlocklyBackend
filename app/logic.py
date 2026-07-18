@@ -208,19 +208,10 @@ def checkEF(evA, comp, delta, unit, colTime, colBlock, evB):
     return False
 
 
-def checkDF(evA, comp, delta, unit, colTime, colBlock, evB):
-    pass
-
-def checkNEF(evA, comp, delta, unit, colTime, colBlock, evB):
-    pass
-
-def checkNDF(evA, comp, delta, unit, colTime, colBlock, evB):
-    pass
-
-
 def applyBinaryRule(parsed: dict, mapping):
     compliant = []
     noncompliant = []
+    ignored = []
 
     # --- 1. Extract Rules dynamically ---
     tx_rules = []
@@ -235,73 +226,89 @@ def applyBinaryRule(parsed: dict, mapping):
         
     for case_id, this_case in log.items():
         
-        # --- 2. Find Constraints (The "Where") ---
-        # We store the INDEX of the event that matches each tx rule
-        found_indices = [None] * len(tx_rules)
-        # print(f'before - {found_indices}')
+        # lista multidimensione per verificare OGNI occorrenza degli eventi
+        found_indices = [[] for _ in range(len(tx_rules))]
         for tx_idx, tx_rule in enumerate(tx_rules):
             constraints = tx_rule["constraint"]
-            tx_id = tx_rule.get("txId", "txId")
-            
             for event_idx, event in enumerate(this_case):
-                # Only look for the first match for this step
-                if found_indices[tx_idx] is None: 
-                    if check_full_constraint(event, constraints, mapping):
-                        found_indices[tx_idx] = event_idx
-                        break 
+                if check_full_constraint(event, constraints, mapping):
+                    found_indices[tx_idx].append(event_idx)
 
         # print(f'after - {found_indices}')
         # --- 3. Check Flow (The "When") ---
         is_case_compliant = True
         
-        # Check every relationship (0->1, 1->2, etc.)
+        # Funzione helper interna per validare anche il tempo se presente
+        def is_valid_sequence(a_idx, b_idx, cf_node):
+            # 1. Deve essere logicamente successivo
+            if b_idx <= a_idx:
+                return False
+            # 2. Se c'è un vincolo temporale (unità), controllalo
+            unit = cf_node.get("unit")
+            if unit:
+                evA = this_case[a_idx]
+                evB = this_case[b_idx]
+                return checkEF(evA, cf_node.get("comp"), cf_node.get("val"), unit, mapping.timestamp, mapping.block, evB)
+            return True
+
         for i, cf in enumerate(cf_rules):
-            idx_A = found_indices[i]
-            idx_B = found_indices[i+1]
+            list_A = found_indices[i]      
+            list_B = found_indices[i+1]    
+            cf_type = cf["cfb"][0] 
             
-            # If a transaction wasn't found, we can't check time/value logic
-            # (Logic below handles "missing" events based on operator type)
-            
-            cf_type = cf["cfb"][0] # "er", "nef", etc.
-            
-            # RELATION: Eventual Follows (er/ef)
-            if cf_type in ["er", "ef"]:
-                #print(f'checking er... {idx_A} - {idx_B}')
-                if idx_A is not None:
-                    # If A happened, if MUST happen after B
-                    if idx_B is None or idx_A < idx_B:
-                        is_case_compliant = False
-                    else:
-                        # Check Time/Value constraints if defined
-                        event_A = this_case[idx_A]
-                        event_B = this_case[idx_B]
-                        # Assuming you have checkEF/checkDF from your old code:
-                        # if not checkEF(event_A, cf["comp"], cf["val"], cf["unit"], mapping.TIME, mapping.B, event_B):
-                        #    is_case_compliant = False
-                        pass
-            elif cf_type in ["edr", "dr"]:
-                #print(f'checking dr... {idx_A} - {idx_B}')
-                if idx_A is not None:
-                    # If A happened, it MUST happen immidiately after B
-                    if idx_B is None or ((idx_A - idx_B) != 1):
-                        is_case_compliant = False
+            if cf_type == "er":
+                if not list_A:
+                    is_case_compliant = False
                 else:
-                    if idx_B is not None:
+                    # check if ANY 'a' has a 'b' > 'a' AND matches time
+                    has_response = any(any(is_valid_sequence(a, b, cf) for b in list_B) for a in list_A)
+                    if not has_response:
+                        is_case_compliant = False
+
+            elif cf_type == "r":
+                if list_A:
+                    all_have_response = all(any(is_valid_sequence(a, b, cf) for b in list_B) for a in list_A)
+                    if not all_have_response:
+                        is_case_compliant = False
+
+            elif cf_type == "edr":
+                if not list_A:
+                    is_case_compliant = False
+                else:
+                    # a+1 deve essere in list_B e rispettare il tempo
+                    has_direct = any(((a + 1) in list_B) and is_valid_sequence(a, a + 1, cf) for a in list_A)
+                    if not has_direct:
                         is_case_compliant = False                
 
-            # RELATION: Never Follows (nef)
-            elif cf_type == "nef":
-                 if idx_A is not None and idx_B is not None:
-                     if idx_B > idx_A:
-                         is_case_compliant = False
+            elif cf_type == "dr":
+                if list_A:
+                    all_have_direct = all(((a + 1) in list_B) and is_valid_sequence(a, a + 1, cf) for a in list_A)
+                    if not all_have_direct:
+                        is_case_compliant = False
+            
+            elif cf_type == "enr":
+                if not list_A:
+                    is_case_compliant = False
+                else:
+                    # check if ANY 'a' has NO valid 'b' > 'a'
+                    has_no_response = any(not any(is_valid_sequence(a, b, cf) for b in list_B) for a in list_A)
+                    if not has_no_response:
+                        is_case_compliant = False
 
-        if all(x is None for x in found_indices): pass
+            elif cf_type == "nr":
+                if list_A:
+                    # check if ALL 'a' have NO valid 'b' > 'a'
+                    none_have_response = all(not any(is_valid_sequence(a, b, cf) for b in list_B) for a in list_A)
+                    if not none_have_response:
+                        is_case_compliant = False
+
+        # Verifica log ignorati (le liste sono tutte vuote)
+        if all(len(x) == 0 for x in found_indices): 
+            ignored.append(this_case)
         elif is_case_compliant: 
             compliant.append(this_case) 
-            #print("OK")
         else: 
             noncompliant.append(this_case)
-            #print("---")
 
     return compliant, noncompliant
 
@@ -332,6 +339,7 @@ def check_full_constraint(event, constraints, mapping):
 def applyUnaryRule(parsed: dict, mapping):
     compliant = []
     noncompliant = []
+    ignored = []
     
     tx_rule = parsed["tx0"]["constraint"]
     mode = parsed["cf0"]["cfu"][0]  # "occ" or "nocc"
@@ -392,11 +400,11 @@ def applyUnaryRule(parsed: dict, mapping):
         elif mode == 'end':
             if found_tx and (found_index == (len(this_case)-1)): compliant.append(this_case)
             else: noncompliant.append(this_case)
-        else: # nocc
+        elif mode == 'nocc': 
             if found_tx: noncompliant.append(this_case)
             else: compliant.append(this_case)
 
-    return compliant, noncompliant
+    return compliant, noncompliant, ignored
 
 # ==========================================
 # New Helper: Flat Field Checker
