@@ -6,21 +6,22 @@ from datetime import datetime
 
 #----------------------------------dataset--------------------------------------
 
-def load_dataset(path):
-    path = Path(path)
+def load_dataset(data):
+    # path = Path(path)
 
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {path}")
+    # if not path.exists():
+    #     raise FileNotFoundError(f"File not found: {path}")
 
-    if path.suffix.lower() == ".csv":
-        return pd.read_csv(path)
+    # if path.suffix.lower() == ".csv":
+    #     return pd.read_csv(path)
 
-    if path.suffix.lower() == ".json":
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return pd.json_normalize(data)
+    # if path.suffix.lower() == ".json":
+    #     with open(path, "r", encoding="utf-8") as f:
+    #         data = json.load(f)
+        
+    return pd.json_normalize(data)
 
-    raise ValueError("Unsupported file format. Use CSV or JSON.")
+    #raise ValueError("Unsupported file format. Use CSV or JSON.")
 
 #-----------------------------------xesContent-------------------------------------
 
