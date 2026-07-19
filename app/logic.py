@@ -8,6 +8,8 @@ from functools import reduce
 import numpy as np
 import pandas as pd
 from fastapi.encoders import jsonable_encoder
+import tempfile
+from io import BytesIO
 
 log = {}
 events: int = 0
@@ -208,7 +210,7 @@ def checkEF(evA, comp, delta, unit, colTime, colBlock, evB):
     return False
 
 
-def applyBinaryRule(parsed: dict, mapping):
+def applyBinaryRule(parsed: dict, mapping, log_dict: dict):
     compliant = []
     noncompliant = []
     ignored = []
@@ -226,7 +228,7 @@ def applyBinaryRule(parsed: dict, mapping):
         if f"cf{i}" in parsed: cf_rules.append(parsed[f"cf{i}"])
         i += 1
         
-    for case_id, this_case in log.items():
+    for case_id, this_case in log_dict.items():
         
         # lista multidimensione per verificare OGNI occorrenza degli eventi
         found_indices = [[] for _ in range(len(tx_rules))]
@@ -335,6 +337,110 @@ def applyBinaryRule(parsed: dict, mapping):
                         trace_state = "NC" # Trovato un A seguito da B. Violazione irreversibile.
                     else:
                         if trace_state == "C": trace_state = "TC" # Nessun A ha B, ma un B futuro potrebbe rovinare tutto
+            
+            # endr: Esiste ALMENO UN A il cui evento immediatamente successivo non è B
+            elif cf_type == "endr":
+                if not list_A:
+                    trace_state = "TNC" # Nessun A presente
+                else:
+                    is_c = False
+                    for a in list_A:
+                        # Verifichiamo se A ha un evento successivo nella traccia
+                        if a < len(this_case) - 1:
+                            # Se l'evento successivo NON è un B valido (o non è in list_B o fallisce il tempo)
+                            if not (((a + 1) in list_B) and is_valid_sequence(a, a + 1, cf)):
+                                trace_state = "C" # Trovata la rottura diretta. Irreversibile.
+                                is_c = True
+                                break
+                    
+                    # Se non abbiamo trovato nessun A seguito da non-B (tutti seguiti da B, o A è ultimo)
+                    if not is_c:
+                        trace_state = "TNC"
+
+            # ndr: OGNI A è seguito da qualcosa di diverso da B (o è l'ultimo evento)
+            elif cf_type == "ndr":
+                if not list_A:
+                    if trace_state == "C": trace_state = "TC"
+                else:
+                    is_nc = False
+                    for a in list_A:
+                        if a < len(this_case) - 1:
+                            # Se l'evento successivo è un B valido, violazione irreversibile
+                            if ((a + 1) in list_B) and is_valid_sequence(a, a + 1, cf):
+                                trace_state = "NC"
+                                is_nc = True
+                                break
+                    
+                    if not is_nc:
+                        if trace_state == "C": trace_state = "TC"
+            
+            # wpr (weak pairwise response): L'n-esimo A è seguito dall'n-esimo B
+            elif cf_type == "wpr":
+                if not list_A:
+                    if trace_state == "C": trace_state = "TC"
+                else:
+                    is_tc = True
+                    for i in range(len(list_A)):
+                        if i < len(list_B):
+                            # Se l'n-esimo B viene prima dell'n-esimo A, o non rispetta il tempo
+                            if list_A[i] >= list_B[i] or not is_valid_sequence(list_A[i], list_B[i], cf):
+                                trace_state = "NC"
+                                is_tc = False
+                                break
+                        else:
+                            # Ci sono più A che B. Siamo in attesa del prossimo B.
+                            trace_state = "TNC"
+                            is_tc = False
+                            break
+                    if is_tc:
+                        if trace_state == "C": trace_state = "TC"
+
+            # spr (strong pairwise response): L'n-esimo A è seguito dall'n-esimo B senza altri A in mezzo
+            elif cf_type == "spr":
+                if not list_A:
+                    if trace_state == "C": trace_state = "TC"
+                else:
+                    is_tc = True
+                    for i in range(len(list_A)):
+                        if i < len(list_B):
+                            # Controllo appaiamento base
+                            if list_A[i] >= list_B[i] or not is_valid_sequence(list_A[i], list_B[i], cf):
+                                trace_state = "NC"
+                                is_tc = False
+                                break
+                            # Controllo interferenza: c'è un A in mezzo?
+                            if i + 1 < len(list_A) and list_A[i+1] < list_B[i]:
+                                trace_state = "NC"
+                                is_tc = False
+                                break
+                        else:
+                            # Manca il B. Se abbiamo già registrato un altro A, la violazione è ormai inevitabile
+                            if i + 1 < len(list_A):
+                                trace_state = "NC"
+                                is_tc = False
+                                break
+                            else:
+                                trace_state = "TNC" # Manca solo il B, siamo in attesa
+                                is_tc = False
+                                break
+                    if is_tc:
+                        if trace_state == "C": trace_state = "TC"
+
+            # c (choice): Almeno uno tra A e B deve essere eseguito
+            elif cf_type == "c":
+                if list_A or list_B:
+                    trace_state = "C"
+                else:
+                    trace_state = "TNC"
+
+            # ex (exclusive choice): Esattamente uno tra A e B deve essere eseguito, mai insieme
+            elif cf_type == "ex":
+                if list_A and list_B:
+                    trace_state = "NC"
+                elif list_A or list_B:
+                    if trace_state == "C": trace_state = "TC"
+                else:
+                    trace_state = "TNC"
 
         if all(len(x) == 0 for x in found_indices): 
             ignored.append(this_case)
@@ -373,7 +479,7 @@ def check_full_constraint(event, constraints, mapping):
                 
     return True
 
-def applyUnaryRule(parsed: dict, mapping):
+def applyUnaryRule(parsed: dict, mapping, log_dict: dict):
     compliant = []
     noncompliant = []
     ignored = []
@@ -383,7 +489,7 @@ def applyUnaryRule(parsed: dict, mapping):
     tx_rule = parsed["tx0"]["constraint"]
     mode = parsed["cf0"]["cfu"][0]  # "occ" or "nocc"
 
-    for case_id, this_case in log.items():
+    for case_id, this_case in log_dict.items():
         found_tx = False
         found_index = None
 
@@ -616,11 +722,11 @@ def verifyRule(rule: str, mapping):
     c, nc, tc, tnc, ign = [], [], [], [], []
     if (parsed.get("cf0", {}).get("cfb") is None):
         #print("Processing unary")
-        c, nc, tc, tnc, ign = applyUnaryRule(parsed, mapping)
+        c, nc, tc, tnc, ign = applyUnaryRule(parsed, mapping, log)
         #evaluateUnary(parsed, mapping)
     else:
         #print("Processing binary")
-        c, nc, tc, tnc, ign = applyBinaryRule(parsed, mapping)
+        c, nc, tc, tnc, ign = applyBinaryRule(parsed, mapping, log)
     # print(c)
     #  print(nc)
     # safe_data = serialize({"compliant": c, "noncompliant": nc})
@@ -632,3 +738,50 @@ def verifyRule(rule: str, mapping):
         "ignored": ign})
 
     return safe_data
+
+def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping):
+
+    # creo un file temporaneo per leggere lo xes
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.xes', delete=False) as tmp:
+        tmp.write(xes_string)
+        tmp_path = tmp.name
+    
+    data = pm4py.read_xes(tmp_path)
+
+    data = data.replace({np.nan: None})# sostituisco NaN con None per rendere compatibili i JSON
+
+    columns = data.columns.tolist()
+
+    try:
+        # raggruppamento degli eventi
+        if "CryptoKitties" in xes_string:
+            grouped = data.groupby('case:ident:piid').apply(lambda x: x.to_dict(orient='records')).to_dict()
+        elif 'case:case_id' in columns:
+            grouped = data.groupby('case:case_id').apply(lambda x: x.to_dict(orient='records')).to_dict()
+        else:
+            grouped = data.groupby('case:concept:name').apply(lambda x: x.to_dict(orient='records')).to_dict()
+
+        local_log_dict = {str(key): value for key, value in grouped.items()}
+
+        # parsing regola
+        parsed: dict = json.loads(rule)
+        c, nc, ign, tc, tnc = [], [], [], [], []
+        
+        # verifica della regola
+        if (parsed.get("cf0", {}).get("cfb") is None):
+            c, nc, tc, tnc, ign = applyUnaryRule(parsed, mapping, local_log_dict)
+        else:
+            c, nc, tc, tnc, ign = applyBinaryRule(parsed, mapping, local_log_dict)
+            
+        safe_data = jsonable_encoder({
+            "compliant": c, 
+            "nonCompliant": nc,  
+            "tempCompliant": tc, 
+            "tempNonCompliant": tnc,
+            "ignored": ign})
+        
+        return safe_data
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+

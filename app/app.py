@@ -10,7 +10,6 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 from app import logic
 from app import jsonConverter
-from app import liveLogic
 
 
 app = FastAPI(debug=os.environ.get("MODE", "DEBUG") == "DEBUG")
@@ -89,7 +88,7 @@ async def verifyRule(rule: Rule, mapping: Mapping):
 @app.post("/api/verifyRuleLive")
 async def verifyRuleLive(request: LiveVerificationRequest):
     try:
-        res = liveLogic.verifyRuleLive(
+        res = logic.verifyRuleLive(
             request.xes_string, 
             request.rule, 
             request.mapping
