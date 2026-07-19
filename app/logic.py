@@ -10,6 +10,7 @@ import pandas as pd
 from fastapi.encoders import jsonable_encoder
 import tempfile
 from io import BytesIO
+import os
 
 log = {}
 events: int = 0
@@ -775,7 +776,7 @@ def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping):
             
         safe_data = jsonable_encoder({
             "compliant": c, 
-            "nonCompliant": nc,  
+            "noncompliant": nc,  
             "tempCompliant": tc, 
             "tempNonCompliant": tnc,
             "ignored": ign})
