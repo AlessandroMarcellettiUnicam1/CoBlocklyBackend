@@ -8,6 +8,7 @@ import tempfile
 import os
 import pandas as pd
 import numpy as np
+from app.logic import checkEF
 
 
 class Mapping(BaseModel):
@@ -55,11 +56,17 @@ def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping):
         
         # verifica della regola
         if (parsed.get("cf0", {}).get("cfb") is None):
-            c, nc, ign = applyUnaryRuleLive(parsed, mapping, local_log_dict)
+            c, nc, tc, tnc, ign = applyUnaryRuleLive(parsed, mapping, local_log_dict)
         else:
-            c, nc, ign = applyBinaryRuleLive(parsed, mapping, local_log_dict)
+            c, nc, tc, tnc, ign = applyBinaryRuleLive(parsed, mapping, local_log_dict)
             
-        safe_data = jsonable_encoder({"compliant": c, "noncompliant": nc, "ignored": ign, "tempCompliant": tc, "tempNonCompliant": tnc})
+        safe_data = jsonable_encoder({
+            "compliant": c, 
+            "nonCompliant": nc,  
+            "tempCompliant": tc, 
+            "tempNonCompliant": tnc,
+            "ignored": ign,})
+        
         return safe_data
     finally:
         if os.path.exists(tmp_path):
@@ -163,13 +170,15 @@ def applyBinaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
         else: 
             noncompliant.append(this_case)
 
-    return compliant, noncompliant
+    return compliant, noncompliant, ignored, 
 
 
 def applyUnaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
     compliant = []
     noncompliant = []
     ignored = []
+    tempComp = []
+    tempNonComp = []
     
     tx_rule = parsed["tx0"]["constraint"]
     mode = parsed["cf0"]["cfu"][0] 
@@ -185,17 +194,17 @@ def applyUnaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
                 break
         
         if mode == 'occ':
-            if found_tx: compliant.append(this_case)
-            else: noncompliant.append(this_case)
+            if found_tx:compliant.append(this_case)
+            else: tempNonComp.append(this_case)
+        elif mode == 'nocc': 
+            if found_tx: noncompliant.append(this_case)
+            else: tempComp.append(this_case)
         elif mode == 'init':
             if found_tx and (found_index == 0): compliant.append(this_case)
             else: noncompliant.append(this_case)
         elif mode == 'end':
-            if found_tx and (found_index == (len(this_case)-1)): compliant.append(this_case)
-            else: noncompliant.append(this_case)
-        elif mode == 'nocc': 
-            if found_tx: noncompliant.append(this_case)
-            else: compliant.append(this_case)
-
-    return compliant, noncompliant, ignored
+            if found_tx and (found_index == (len(this_case)-1)): tempComp.append(this_case)
+            else: tempNonComp.append(this_case)
+        
+    return compliant, noncompliant, tempComp, tempNonComp, ignored
 

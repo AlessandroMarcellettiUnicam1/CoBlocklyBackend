@@ -212,6 +212,8 @@ def applyBinaryRule(parsed: dict, mapping):
     compliant = []
     noncompliant = []
     ignored = []
+    tempComp = []
+    tempNonComp = []
 
     # --- 1. Extract Rules dynamically ---
     tx_rules = []
@@ -310,7 +312,7 @@ def applyBinaryRule(parsed: dict, mapping):
         else: 
             noncompliant.append(this_case)
 
-    return compliant, noncompliant
+    return compliant, noncompliant, tempComp, tempNonComp, ignored
 
 def check_full_constraint(event, constraints, mapping):
     """
@@ -340,6 +342,8 @@ def applyUnaryRule(parsed: dict, mapping):
     compliant = []
     noncompliant = []
     ignored = []
+    tempComp = []
+    tempNonComp = []
     
     tx_rule = parsed["tx0"]["constraint"]
     mode = parsed["cf0"]["cfu"][0]  # "occ" or "nocc"
@@ -391,20 +395,19 @@ def applyUnaryRule(parsed: dict, mapping):
         
         # --- Compliance Decision ---
         if mode == 'occ':
-            # print("valuto occ")
-            if found_tx: compliant.append(this_case)
-            else: noncompliant.append(this_case)
+            if found_tx:compliant.append(this_case)
+            else: tempNonComp.append(this_case)
+        elif mode == 'nocc': 
+            if found_tx: noncompliant.append(this_case)
+            else: tempComp.append(this_case)
         elif mode == 'init':
             if found_tx and (found_index == 0): compliant.append(this_case)
             else: noncompliant.append(this_case)
         elif mode == 'end':
-            if found_tx and (found_index == (len(this_case)-1)): compliant.append(this_case)
-            else: noncompliant.append(this_case)
-        elif mode == 'nocc': 
-            if found_tx: noncompliant.append(this_case)
-            else: compliant.append(this_case)
-
-    return compliant, noncompliant, ignored
+            if found_tx and (found_index == (len(this_case)-1)): tempComp.append(this_case)
+            else: tempNonComp.append(this_case)
+    
+    return compliant, noncompliant, tempComp, tempNonComp, ignored
 
 # ==========================================
 # New Helper: Flat Field Checker
@@ -575,17 +578,22 @@ def verifyRule(rule: str, mapping):
     #parsed = interpretRule(rule, 0, 0)
     parsed: dict = json.loads(rule)
     #print(parsed)
-    c, nc = [], []
+    c, nc, tc, tnc, ign = [], [], [], [], []
     if (parsed.get("cf0", {}).get("cfb") is None):
         #print("Processing unary")
-        c, nc = applyUnaryRule(parsed, mapping)
+        c, nc, tc, tnc, ign = applyUnaryRule(parsed, mapping)
         #evaluateUnary(parsed, mapping)
     else:
         #print("Processing binary")
-        c, nc = applyBinaryRule(parsed, mapping)
+        c, nc, tc, tnc, ign = applyBinaryRule(parsed, mapping)
     # print(c)
     #  print(nc)
     # safe_data = serialize({"compliant": c, "noncompliant": nc})
-    safe_data = jsonable_encoder({"compliant": c, "noncompliant": nc})
+    safe_data = jsonable_encoder({
+        "compliant": c, 
+        "noncompliant": nc,
+        "tempCompliant": tc,
+        "tempNonCompliant": tnc,
+        "ignored": ign})
 
     return safe_data
