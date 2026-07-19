@@ -76,6 +76,8 @@ def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping):
 def applyBinaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
     compliant = []
     noncompliant = []
+    tempComp = []
+    tempNonComp = []
     ignored = []
 
     tx_rules = []
@@ -96,7 +98,7 @@ def applyBinaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
                 if check_full_constraint(event, constraints, mapping):
                     found_indices[tx_idx].append(event_idx)
 
-        is_case_compliant = True
+        trace_state = "C"
         
         # Funzione helper interna per validare anche il tempo se presente
         def is_valid_sequence(a_idx, b_idx, cf_node):
@@ -116,61 +118,96 @@ def applyBinaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
             list_B = found_indices[i+1]    
             cf_type = cf["cfb"][0] 
             
+            # er: Esiste ALMENO UN A che è prima o poi seguito da un B
             if cf_type == "er":
                 if not list_A:
-                    is_case_compliant = False
+                    trace_state = "TNC" # TODO: gestire tutti i casi in cui non ci sono le A
                 else:
-                    # check if ANY 'a' has a 'b' > 'a' AND matches time
                     has_response = any(any(is_valid_sequence(a, b, cf) for b in list_B) for a in list_A)
                     if not has_response:
-                        is_case_compliant = False
+                        trace_state = "TNC" # Trovato A, manca B
 
+            # r: OGNI A è prima o poi seguito da un B
             elif cf_type == "r":
-                if list_A:
+                if not list_A:
+                    if trace_state == "C": trace_state = "TC" # TODO
+                else:
                     all_have_response = all(any(is_valid_sequence(a, b, cf) for b in list_B) for a in list_A)
-                    if not all_have_response:
-                        is_case_compliant = False
+                    if all_have_response:
+                        if trace_state == "C": trace_state = "TC"
+                    else:
+                        trace_state = "TNC" 
 
+            # edr (exists direct response): Esiste ALMENO UN A immediatamente seguito da B
             elif cf_type == "edr":
                 if not list_A:
-                    is_case_compliant = False
+                    trace_state = "TNC"
                 else:
-                    # a+1 deve essere in list_B e rispettare il tempo
                     has_direct = any(((a + 1) in list_B) and is_valid_sequence(a, a + 1, cf) for a in list_A)
                     if not has_direct:
-                        is_case_compliant = False                
+                        trace_state = "TNC"
+                    # Se lo trova, trace_state rimane "C" (permanente)
 
+            # dr: OGNI A è immediatamente seguito da B
             elif cf_type == "dr":
-                if list_A:
-                    all_have_direct = all(((a + 1) in list_B) and is_valid_sequence(a, a + 1, cf) for a in list_A)
-                    if not all_have_direct:
-                        is_case_compliant = False
+                if not list_A:
+                    if trace_state == "C": trace_state = "TC"
+                else:
+                    is_tc = True
+                    for a in list_A:
+                        if ((a + 1) in list_B) and is_valid_sequence(a, a + 1, cf):
+                            continue # Questo A specifico è conforme
+                        else:
+                            # Questo A non è seguito da un B valido. Capiamo il perché:
+                            if a == len(this_case) - 1:
+                                # A è l'ultimissimo evento della traccia. Potrebbe arrivare un B in futuro.
+                                trace_state = "TNC"
+                                is_tc = False
+                            else:
+                                # A è seguito da un evento, ma NON è B. La catena è rotta per sempre.
+                                trace_state = "NC"
+                                is_tc = False
+                                break # Usciamo dal ciclo, la violazione irreversibile ha la priorità
+                    
+                    if is_tc:
+                        if trace_state == "C": trace_state = "TC"
             
+            # enr: Esiste ALMENO UN A che NON ha nessun B successivo
             elif cf_type == "enr":
                 if not list_A:
-                    is_case_compliant = False
+                    trace_state = "TNC" # TODO: no A
                 else:
                     # check if ANY 'a' has NO valid 'b' > 'a'
                     has_no_response = any(not any(is_valid_sequence(a, b, cf) for b in list_B) for a in list_A)
-                    if not has_no_response:
-                        is_case_compliant = False
+                    if has_no_response:
+                        if trace_state == "C": trace_state = "TC" # Ne esiste uno, ma un B futuro potrebbe invalidarlo
+                    else:
+                        trace_state = "TNC" # Tutti gli A hanno un B. In attesa di un nuovo A.
 
+            # nr: NESSUN A ha un B successivo (Ogni A è senza B)
             elif cf_type == "nr":
-                if list_A:
-                    # check if ALL 'a' have NO valid 'b' > 'a'
-                    none_have_response = all(not any(is_valid_sequence(a, b, cf) for b in list_B) for a in list_A)
-                    if not none_have_response:
-                        is_case_compliant = False
+                if not list_A:
+                    if trace_state == "C": trace_state = "TC" # TODO: verità vacua
+                else:
+                    # check if ANY 'a' has a valid 'b' > 'a'
+                    has_violation = any(any(is_valid_sequence(a, b, cf) for b in list_B) for a in list_A)
+                    if has_violation:
+                        trace_state = "NC" # Trovato un A seguito da B. Violazione irreversibile.
+                    else:
+                        if trace_state == "C": trace_state = "TC" # Nessun A ha B, ma un B futuro potrebbe rovinare tutto
 
-        # Verifica log ignorati (le liste sono tutte vuote)
         if all(len(x) == 0 for x in found_indices): 
             ignored.append(this_case)
-        elif is_case_compliant: 
+        elif trace_state == "C": 
             compliant.append(this_case) 
-        else: 
+        elif trace_state == "NC": 
             noncompliant.append(this_case)
+        elif trace_state == "TC": 
+            tempComp.append(this_case)
+        elif trace_state == "TNC": 
+            tempNonComp.append(this_case)
 
-    return compliant, noncompliant, ignored, 
+    return compliant, noncompliant, tempComp, tempNonComp, ignored, 
 
 
 def applyUnaryRuleLive(parsed: dict, mapping, local_log_dict: dict):
