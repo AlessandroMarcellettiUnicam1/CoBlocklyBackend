@@ -273,7 +273,7 @@ def applyBinaryRule(parsed: dict, mapping, log_dict: dict):
             # r: OGNI A è prima o poi seguito da un B
             elif cf_type == "r":
                 if not list_A:
-                    if trace_state == "C": trace_state = "TC" # TODO
+                    trace_state = "IGN" # se A non c'è, ignoro
                 else:
                     all_have_response = all(any(is_valid_sequence(a, b, cf) for b in list_B) for a in list_A)
                     if all_have_response:
@@ -294,23 +294,20 @@ def applyBinaryRule(parsed: dict, mapping, log_dict: dict):
             # dr: OGNI A è immediatamente seguito da B
             elif cf_type == "dr":
                 if not list_A:
-                    if trace_state == "C": trace_state = "TC"
+                    trace_state = "IGN" # se non c'è A, ignoro
                 else:
                     is_tc = True
                     for a in list_A:
                         if ((a + 1) in list_B) and is_valid_sequence(a, a + 1, cf):
-                            continue # Questo A specifico è conforme
+                            continue 
                         else:
-                            # Questo A non è seguito da un B valido. Capiamo il perché:
                             if a == len(this_case) - 1:
-                                # A è l'ultimissimo evento della traccia. Potrebbe arrivare un B in futuro.
                                 trace_state = "TNC"
                                 is_tc = False
                             else:
-                                # A è seguito da un evento, ma NON è B. La catena è rotta per sempre.
                                 trace_state = "NC"
                                 is_tc = False
-                                break # Usciamo dal ciclo, la violazione irreversibile ha la priorità
+                                break 
                     
                     if is_tc:
                         if trace_state == "C": trace_state = "TC"
@@ -330,7 +327,7 @@ def applyBinaryRule(parsed: dict, mapping, log_dict: dict):
             # nr: NESSUN A ha un B successivo (Ogni A è senza B)
             elif cf_type == "nr":
                 if not list_A:
-                    if trace_state == "C": trace_state = "TC" # TODO: verità vacua
+                    trace_state = "IGN" # se A non c'è, ignoro
                 else:
                     # check if ANY 'a' has a valid 'b' > 'a'
                     has_violation = any(any(is_valid_sequence(a, b, cf) for b in list_B) for a in list_A)
@@ -361,7 +358,7 @@ def applyBinaryRule(parsed: dict, mapping, log_dict: dict):
             # ndr: OGNI A è seguito da qualcosa di diverso da B (o è l'ultimo evento)
             elif cf_type == "ndr":
                 if not list_A:
-                    if trace_state == "C": trace_state = "TC"
+                    trace_state = "IGN" # ignora la traccia se manca A
                 else:
                     is_nc = False
                     for a in list_A:
@@ -378,7 +375,7 @@ def applyBinaryRule(parsed: dict, mapping, log_dict: dict):
             # wpr (weak pairwise response): L'n-esimo A è seguito dall'n-esimo B
             elif cf_type == "wpr":
                 if not list_A:
-                    if trace_state == "C": trace_state = "TC"
+                    trace_state = "IGN"
                 else:
                     is_tc = True
                     for i in range(len(list_A)):
@@ -399,7 +396,7 @@ def applyBinaryRule(parsed: dict, mapping, log_dict: dict):
             # spr (strong pairwise response): L'n-esimo A è seguito dall'n-esimo B senza altri A in mezzo
             elif cf_type == "spr":
                 if not list_A:
-                    if trace_state == "C": trace_state = "TC"
+                    trace_state = "IGN"
                 else:
                     is_tc = True
                     for i in range(len(list_A)):
@@ -443,7 +440,7 @@ def applyBinaryRule(parsed: dict, mapping, log_dict: dict):
                 else:
                     trace_state = "TNC"
 
-        if all(len(x) == 0 for x in found_indices): 
+        if trace_state == "IGN": #or all(len(x) == 0 for x in found_indices): 
             ignored.append(this_case)
         elif trace_state == "C": 
             compliant.append(this_case) 
