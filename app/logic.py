@@ -485,7 +485,7 @@ def applyUnaryRule(parsed: dict, mapping, log_dict: dict):
     tempNonComp = []
     
     tx_rule = parsed["tx0"]["constraint"]
-    mode = parsed["cf0"]["cfu"][0]  # "occ" or "nocc"
+    mode = parsed["cf0"]["cfu"][0].strip().lower()  # "occ" or "nocc"
 
     for case_id, this_case in log_dict.items():
         found_tx = False
@@ -545,6 +545,9 @@ def applyUnaryRule(parsed: dict, mapping, log_dict: dict):
         elif mode == 'end':
             if found_tx and (found_index == (len(this_case)-1)): tempComp.append(this_case)
             else: tempNonComp.append(this_case)
+        else:
+            print(f"[WARNING] Modalità Unary non riconosciuta: '{mode}'")
+            tempNonComp.append(this_case)
     
     return compliant, noncompliant, tempComp, tempNonComp, ignored
 
