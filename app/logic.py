@@ -737,7 +737,9 @@ def verifyRule(rule: str, mapping):
 
     return safe_data
 
-def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping):
+def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping, resolved_cases: list = None):
+    if resolved_cases is None:
+        resolved_cases = []
 
     # creo un file temporaneo per leggere lo xes
     with tempfile.NamedTemporaryFile(mode='w', suffix='.xes', delete=False) as tmp:
@@ -761,15 +763,17 @@ def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping):
 
         local_log_dict = {str(key): value for key, value in grouped.items()}
 
+        filtered_log_dict = filter_resolved_cases(local_log_dict, resolved_cases)
+
         # parsing regola
         parsed: dict = json.loads(rule)
         c, nc, ign, tc, tnc = [], [], [], [], []
         
         # verifica della regola
         if (parsed.get("cf0", {}).get("cfb") is None):
-            c, nc, tc, tnc, ign = applyUnaryRule(parsed, mapping, local_log_dict)
+            c, nc, tc, tnc, ign = applyUnaryRule(parsed, mapping, filtered_log_dict)
         else:
-            c, nc, tc, tnc, ign = applyBinaryRule(parsed, mapping, local_log_dict)
+            c, nc, tc, tnc, ign = applyBinaryRule(parsed, mapping, filtered_log_dict)
             
         safe_data = jsonable_encoder({
             "compliant": c, 
@@ -782,4 +786,19 @@ def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping):
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+def filter_resolved_cases(log_dict: dict, resolved_cases: list) -> dict:
+    """
+    Scarta dal dizionario delle tracce quelle che sono già state valutate 
+    definitivamente (compliant/noncompliant) in blocchi precedenti.
+    """
+    if not resolved_cases:
+        return log_dict
+
+    filtered_log = {}
+    for case_id, trace_events in log_dict.items():
+        if str(case_id) not in resolved_cases:
+            filtered_log[str(case_id)] = trace_events
+            
+    return filtered_log
 

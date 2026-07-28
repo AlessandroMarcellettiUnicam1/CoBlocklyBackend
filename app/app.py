@@ -7,9 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app import logic
 from app import jsonConverter
+
 
 
 app = FastAPI(debug=os.environ.get("MODE", "DEBUG") == "DEBUG")
@@ -55,6 +56,7 @@ class LiveVerificationRequest(BaseModel):
     xes_string: str
     rule: str
     mapping: Mapping
+    resolved_cases: Optional[List[str]] = []
 
 @app.post("/api/uploadLog")
 async def uploadFile(file: UploadFile = File(...)):
@@ -91,7 +93,8 @@ async def verifyRuleLive(request: LiveVerificationRequest):
         res = logic.verifyRuleLive(
             request.xes_string, 
             request.rule, 
-            request.mapping
+            request.mapping,
+            request.resolved_cases
         )
         return JSONResponse(content=res)
         
