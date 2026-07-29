@@ -547,7 +547,7 @@ def applyUnaryRule(parsed: dict, mapping, log_dict: dict):
             else: tempNonComp.append(this_case)
         else:
             print(f"[WARNING] Modalità Unary non riconosciuta: '{mode}'")
-            tempNonComp.append(this_case)
+            ignored.append(this_case)
     
     return compliant, noncompliant, tempComp, tempNonComp, ignored
 
