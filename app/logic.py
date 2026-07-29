@@ -539,10 +539,10 @@ def applyUnaryRule(parsed: dict, mapping, log_dict: dict):
         elif mode == 'nocc': 
             if found_tx: noncompliant.append(this_case)
             else: tempComp.append(this_case)
-        elif mode == 'init':
+        elif mode == 'init': # o i?
             if found_tx and (found_index == 0): compliant.append(this_case)
             else: noncompliant.append(this_case)
-        elif mode == 'end':
+        elif mode == 'e': # o end?
             if found_tx and (found_index == (len(this_case)-1)): tempComp.append(this_case)
             else: tempNonComp.append(this_case)
         else:
