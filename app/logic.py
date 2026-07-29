@@ -11,6 +11,7 @@ from fastapi.encoders import jsonable_encoder
 import tempfile
 from io import BytesIO
 import os
+import time
 
 log = {}
 events: int = 0
@@ -218,6 +219,8 @@ def applyBinaryRule(parsed: dict, mapping, log_dict: dict):
     tempComp = []
     tempNonComp = []
 
+    trace_metrics = []
+
     # --- 1. Extract Rules dynamically ---
     tx_rules = []
     cf_rules = []
@@ -230,6 +233,8 @@ def applyBinaryRule(parsed: dict, mapping, log_dict: dict):
         i += 1
         
     for case_id, this_case in log_dict.items():
+
+        t_start = time.perf_counter()
         
         # lista multidimensione per verificare OGNI occorrenza degli eventi
         found_indices = [[] for _ in range(len(tx_rules))]
@@ -451,7 +456,18 @@ def applyBinaryRule(parsed: dict, mapping, log_dict: dict):
         elif trace_state == "TNC": 
             tempNonComp.append(this_case)
 
-    return compliant, noncompliant, tempComp, tempNonComp, ignored
+        t_end = time.perf_counter()
+        validation_time = round((t_end - t_start) * 1000, 3)
+
+        trace_metrics.append({
+            "case_id": case_id,
+            "number_of_events": len(this_case),
+            "validation_time_ms": validation_time,
+            "trace_status": trace_state,
+            "measured_trace": this_case
+        })
+
+    return compliant, noncompliant, tempComp, tempNonComp, ignored, trace_metrics
 
 def check_full_constraint(event, constraints, mapping):
     """
@@ -483,11 +499,14 @@ def applyUnaryRule(parsed: dict, mapping, log_dict: dict):
     ignored = []
     tempComp = []
     tempNonComp = []
+
+    trace_metrics = []
     
     tx_rule = parsed["tx0"]["constraint"]
     mode = parsed["cf0"]["cfu"][0].strip().lower()  # "occ" or "nocc"
 
     for case_id, this_case in log_dict.items():
+        t_start = time.perf_counter()
         found_tx = False
         found_index = None
 
@@ -533,23 +552,52 @@ def applyUnaryRule(parsed: dict, mapping, log_dict: dict):
                 break
         
         # --- Compliance Decision ---
+        trace_state = ""
         if mode == 'occ':
-            if found_tx:compliant.append(this_case)
-            else: tempNonComp.append(this_case)
+            if found_tx:
+                compliant.append(this_case)
+                trace_state = "C"
+            else: 
+                tempNonComp.append(this_case)
+                trace_state = "TNC"
         elif mode == 'nocc': 
-            if found_tx: noncompliant.append(this_case)
-            else: tempComp.append(this_case)
+            if found_tx: 
+                noncompliant.append(this_case)
+                trace_state = "NC"
+            else: 
+                tempComp.append(this_case)
+                trace_state = "TC"
         elif mode == 'init': # o i?
-            if found_tx and (found_index == 0): compliant.append(this_case)
-            else: noncompliant.append(this_case)
+            if found_tx and (found_index == 0): 
+                compliant.append(this_case)
+                trace_state = "C"
+            else: 
+                noncompliant.append(this_case)
+                trace_state = "NC"
         elif mode == 'e': # o end?
-            if found_tx and (found_index == (len(this_case)-1)): tempComp.append(this_case)
-            else: tempNonComp.append(this_case)
+            if found_tx and (found_index == (len(this_case)-1)): 
+                tempComp.append(this_case)
+                trace_state = "TC"
+            else: 
+                tempNonComp.append(this_case)
+                trace_state = "TNC"
         else:
             print(f"[WARNING] Modalità Unary non riconosciuta: '{mode}'")
             ignored.append(this_case)
-    
-    return compliant, noncompliant, tempComp, tempNonComp, ignored
+            trace_state = "IGN"
+
+        t_end = time.perf_counter()
+        validation_time = round((t_end - t_start) * 1000, 3) 
+        
+        trace_metrics.append({
+            "case_id": case_id,
+            "number_of_events": len(this_case),
+            "validation_time_ms": validation_time,
+            "trace_status": trace_state,
+            "measured_trace": this_case
+        })
+
+    return compliant, noncompliant, tempComp, tempNonComp, ignored, trace_metrics
 
 # ==========================================
 # New Helper: Flat Field Checker
@@ -774,16 +822,18 @@ def verifyRuleLive(xes_string: str, rule: str, mapping: Mapping, resolved_cases:
         
         # verifica della regola
         if (parsed.get("cf0", {}).get("cfb") is None):
-            c, nc, tc, tnc, ign = applyUnaryRule(parsed, mapping, filtered_log_dict)
+            c, nc, tc, tnc, ign, metrics = applyUnaryRule(parsed, mapping, filtered_log_dict)
         else:
-            c, nc, tc, tnc, ign = applyBinaryRule(parsed, mapping, filtered_log_dict)
+            c, nc, tc, tnc, ign, metrics = applyBinaryRule(parsed, mapping, filtered_log_dict)
             
         safe_data = jsonable_encoder({
             "compliant": c, 
             "noncompliant": nc,  
             "tempCompliant": tc, 
             "tempNonCompliant": tnc,
-            "ignored": ign})
+            "ignored": ign,
+            "trace_metrics": metrics
+        })
         
         return safe_data
     finally:
