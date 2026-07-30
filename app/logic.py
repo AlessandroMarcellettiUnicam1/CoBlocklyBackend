@@ -849,8 +849,12 @@ def filter_resolved_cases(log_dict: dict, resolved_cases: list) -> dict:
         return log_dict
 
     filtered_log = {}
+    
+    # CONVERSIONE IN SET PER LOOKUP ISTANTANEO
+    resolved_set = set(str(c) for c in resolved_cases)
+
     for case_id, trace_events in log_dict.items():
-        if str(case_id) not in resolved_cases:
+        if str(case_id) not in resolved_set:
             filtered_log[str(case_id)] = trace_events
             
     return filtered_log
